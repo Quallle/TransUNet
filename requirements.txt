@@ -9,3 +9,10 @@ medpy
 SimpleITK
 scipy
 h5py
+
+ml_collections
+medpy
+catalyst==20.12
+albumentations==0.5.2
+ttach==0.0.2
+psutil
