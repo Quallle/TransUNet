@@ -60,7 +60,9 @@ def trainer_synapse(args, model, snapshot_path):
     for epoch_num in iterator:
         for i_batch, sampled_batch in enumerate(trainloader):
             image_batch, label_batch = sampled_batch['image'], sampled_batch['mask_ce']
-            #image_batch, label_batch = image_batch#.cuda(), label_batch#.cuda()
+            if torch.cuda.is_available():
+                image_batch, label_batch = image_batch.cuda(), label_batch.cuda()
+
             outputs = model(image_batch)
             loss_ce = ce_loss(outputs, label_batch[:].long())
             loss_dice = dice_loss(outputs, label_batch, softmax=True)

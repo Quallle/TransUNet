@@ -6,6 +6,7 @@ import sys
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
+from torch.cuda import is_available
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -116,6 +117,8 @@ if __name__ == "__main__":
     if args.vit_name.find('R50') !=-1:
         config_vit.patches.grid = (int(args.img_size/args.vit_patches_size), int(args.img_size/args.vit_patches_size))
     net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes)#.cuda()
+    if torch.cuda.is_available():
+        net=net.cuda()
 
     snapshot = os.path.join(snapshot_path, 'best_model.pth')
     if not os.path.exists(snapshot): snapshot = snapshot.replace('best_model', 'epoch_'+str(args.max_epochs-1))
