@@ -14,6 +14,9 @@ from datasets.dataset import SegmentationDataset
 from utils import test_single_volume
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
+from utils import Params
+
+params=Params("./params.json")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--volume_path', type=str,
@@ -83,7 +86,7 @@ if __name__ == "__main__":
             'Dataset': SegmentationDataset,
             'volume_path': '../data/Synapse/test_vol_h5',
             'list_dir': './lists/lists_Synapse',
-            'num_classes': 16,
+            'num_classes': params.num_classes,
             'z_spacing': 1,
         },
     }

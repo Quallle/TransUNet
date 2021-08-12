@@ -32,7 +32,7 @@ def trainer_synapse(args, model, snapshot_path):
     # max_iterations = args.max_iterations
     images = sorted(Path(params.train_image_path).glob("*.png"))
     masks = sorted(Path(params.train_mask_path).glob("*.png"))
-    transforms=get_augmentations(params)
+    transforms,_,_=get_augmentations(params)
     db_train = SegmentationDataset(images,
         num_classes=params.num_classes,
         image_size=params.img_shape, #only squares right now 

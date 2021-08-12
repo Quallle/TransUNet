@@ -8,6 +8,9 @@ import torch.backends.cudnn as cudnn
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
 from trainer import trainer_synapse
+from utils import Params
+
+params=Params("./params.json")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
@@ -59,7 +62,7 @@ if __name__ == "__main__":
         'Synapse': {
             'root_path': '../data/Synapse/train_npz',
             'list_dir': './lists/lists_Synapse',
-            'num_classes': 16,
+            'num_classes': params.num_classes,
         },
     }
     args.num_classes = dataset_config[dataset_name]['num_classes']
