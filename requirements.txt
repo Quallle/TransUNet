@@ -9,7 +9,7 @@ medpy
 SimpleITK
 scipy
 h5py
-
+matplotlib==3.2.2
 ml_collections
 medpy
 catalyst==20.12

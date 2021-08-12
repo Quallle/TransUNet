@@ -14,9 +14,22 @@ from datasets.dataset import SegmentationDataset
 from utils import test_single_volume
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
+from numpy.core.numeric import zeros_like
+from torch.nn import Softmax2d
+import copy
+from plotting_utils import save_numpy_prediction, show_preds,save_raw_im
 from utils import Params
+import csv
+from sklearn.metrics import f1_score,jaccard_score
+from pathlib import Path
+from catalyst import utils
+from catalyst.dl import SupervisedRunner
+
 
 params=Params("./params.json")
+
+
+replacements_dict={3:1, 4:2,7:3,8:3,11:3, 1:0, 2:0,5:0,6:0,9:0,10:0,12:0,13:0,14:0,15:0}
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--volume_path', type=str,
@@ -29,14 +42,14 @@ parser.add_argument('--list_dir', type=str,
                     default='./lists/lists_Synapse', help='list dir')
 
 parser.add_argument('--max_iterations', type=int,default=20000, help='maximum epoch number to train')
-parser.add_argument('--max_epochs', type=int, default=30, help='maximum epoch number to train')
+parser.add_argument('--max_epochs', type=int, default=150, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int, default=24,
                     help='batch_size per gpu')
 parser.add_argument('--img_size', type=int, default=224, help='input patch size of network input')
 parser.add_argument('--is_savenii', action="store_true", help='whether to save results during inference')
 
 parser.add_argument('--n_skip', type=int, default=3, help='using number of skip-connect, default is num')
-parser.add_argument('--vit_name', type=str, default='ViT-B_16', help='select one vit model')
+parser.add_argument('--vit_name', type=str, default='R50-ViT-B_16', help='select one vit model')
 
 parser.add_argument('--test_save_dir', type=str, default='../predictions', help='saving prediction as nii!')
 parser.add_argument('--deterministic', type=int,  default=1, help='whether use deterministic training')
@@ -67,6 +80,231 @@ def inference(args, model, test_save_path=None):
     logging.info('Testing performance in best val model: mean_dice : %f mean_hd95 : %f' % (performance, mean_hd95))
     return "Testing Finished!"
 
+def get_split(filepath,im_array,mask_array):
+    new_mask_arr=[]
+    new_im_arr=[]
+    with open(filepath) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            for im in im_array:
+                if(row[1] in str(im)):
+                    new_im_arr.append(im)
+                    break
+            for mask in mask_array:
+                if(row[1] in str(mask)):
+                    new_mask_arr.append(mask)
+                    break
+    return new_im_arr,new_mask_arr
+    
+def predict_and_visualize(dataloader,model,runner,params,dataset_size,evalmode=False):
+    visualization_indices = np.random.choice(dataset_size, params.nr_preds_to_show)
+    ensemble_prediction(dataloader,model, runner, params,visualization_indices,evalmode)
+
+def ensemble_prediction(dataloader, model, runner, params,visualization_indices, evalmode=False):
+    if len(dataloader.dataset.masks)>0:
+        masks_loaded=True
+    else:
+        masks_loaded=False
+    print("Starting prediction..")
+
+    softmax=Softmax2d()
+
+    #our special case when we remap to only 4 classes
+    if(params.remap):
+        nr_classes=4
+    else:
+        nr_classes=params.num_classes
+
+    predictions=np.zeros((params.batch_size,params.num_classes,params.img_shape,params.img_shape))
+    predictors=np.array([])
+    pred_dict={}
+
+    #following code could be used for ensemble prediction of multiple models
+    if(evalmode):
+
+        predictors=np.append(predictors,copy.deepcopy(runner).predict_loader(loader=dataloader, model=copy.deepcopy(model)))
+
+    else:
+        predictors=[runner.predict_loader(loader=dataloader, model=model)]
+
+    nr_predictors=len(predictors)
+    
+    for i,all_data in enumerate(zip(dataloader,*predictors)):
+        ensemble_pred=dict()
+        preds=all_data[1:]
+
+        #logits is a misleading name as it is raw output, not logits. changing the name leads to a bug in catalyst.
+        ensemble_pred['softmax']=zeros_like(preds[0]['logits'].cpu().numpy())
+        image_data=all_data[0]
+
+        for single_batch in preds:
+            single_batch['softmax']=softmax(single_batch['logits']).cpu().numpy() 
+        for single_batch in preds:
+            ensemble_pred['softmax']= ensemble_pred['softmax']+(single_batch['softmax']/nr_predictors)
+
+        if(i==0):
+            if(masks_loaded):
+                dice_score,iou_score,score_list=dice(image_data,ensemble_pred,params)
+            class_occurence_dict=occurence_checker(image_data,ensemble_pred,params)
+
+        elif masks_loaded:
+            dice_now,iou_now,score_list_now=dice(image_data,ensemble_pred,params)
+            dice_score+=dice_now
+            iou_score+=iou_now
+            score_list+=score_list_now
+
+        if(i>0):
+            class_occurence_dict.update(occurence_checker(image_data,ensemble_pred,params))
+
+        if masks_loaded:
+            pred_dict.update(get_pixel_predictions(image_data, ensemble_pred, params))
+
+        show_preds(image_data,ensemble_pred,i,visualization_indices,save_path=params.logdir+"/predictions")
+
+        if(params.save_raw):
+            save_raw_im(image_data,ensemble_pred,params)
+        if(params.save_numpy):
+            save_numpy_prediction(image_data,ensemble_pred,params)
+        
+        if(params.remap==1):
+            show_preds(image_data,ensemble_pred,i,visualization_indices,remap=True,save_path=params.logdir+"/predictionsRemapped")
+        print("\r {}".format("Predicting: Batch " +str(i+1) + " of " + str(int(len(dataloader.dataset.images)/params.batch_size))+ " completed."), end="")
+      
+    if(masks_loaded):
+        iou_score=absToPercent(iou_score,nr_classes)
+        dice_score=absToPercent(dice_score,nr_classes)
+        score_list.sort(key=get_mean)
+        print("IOU stats: ", iou_score)
+        print("Dice stats: ", dice_score)
+    #print("Score list: ", score_list)
+    
+
+        with open('score_file.csv', mode='w') as score_file:
+            writer = csv.writer(score_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            for score in score_list:
+                writer.writerow(score)
+        with open('pixel_pred_file.csv', mode='w') as score_file:
+            writer = csv.writer(score_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            for key in pred_dict:
+                writer.writerow((key,pred_dict[key]))
+
+    with open('occurence_file.csv', mode='w') as score_file:
+        writer = csv.writer(score_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        for key in class_occurence_dict:
+            writer.writerow((key,class_occurence_dict[key]))
+            
+    return predictions
+
+def absToPercent(dice_scores,nr_classes):
+    mean_score=dict()
+    mean_list=[]
+    for i in range(nr_classes):
+        cleaned_list=[image_score[i] for image_score in dice_scores if image_score[i]<1.0]
+        if(len(cleaned_list)>0):
+            mean_score[i]=np.mean(cleaned_list)
+        else:
+            mean_score[i]=None
+    
+    for i in mean_score.keys():
+        if(i!=0 and mean_score[i]!=None):#0 is background
+            mean_list.append(mean_score[i])
+    mean_score['mean']=np.mean(mean_list) 
+    return mean_score
+
+def mp(entry,mapper_dict):
+    return mapper_dict[entry] if entry in mapper_dict else entry
+mp=np.vectorize(mp)
+
+def occurence_checker(images, predictions,params):
+    filenames=images['filename']
+    im_dict={}
+    for (values, name) in zip(predictions['softmax'],filenames):
+        mask = np.array(torch.argmax(torch.from_numpy(values),dim=0))
+
+        arr=np.zeros(params.num_classes)
+        
+        for i in range(params.num_classes):
+            if(i in mask):arr[i]=1
+        im_dict[name]=arr
+    return im_dict
+
+def dice(images, predictions, params):
+    if('mask_ce' not in images):
+        return None,None,None
+    filenames=images['filename']
+    images=images['mask_ce']
+    predictions=predictions['softmax']
+    #dice_list = np.zeros((params.num_classes,1))
+    dice_list=[]
+    iou_list=[]
+    score_list=[]
+    nr_classes=params.num_classes
+
+    if(params.remap==1):
+        nr_classes=4
+    else:
+        nr_classes=params.num_classes
+
+    for (image, values, name) in zip(images, predictions,filenames):   
+
+            gtmask=np.array(image).flatten()
+            mask = np.array(torch.argmax(torch.from_numpy(values),dim=0)).flatten()
+
+            if(params.remap==1):
+                mask=mp(mask,replacements_dict)
+
+            dice_score_image=f1_score(gtmask,mask,labels=range(nr_classes),average=None,zero_division=1)
+            iou_score_image=jaccard_score(gtmask,mask,labels=range(nr_classes),average=None,zero_division=1)
+
+            dice_list.append(dice_score_image)
+            iou_list.append(iou_score_image)
+            dice_score_image=np.append(dice_score_image,np.mean(dice_score_image[dice_score_image<1][1:]))
+            score_list.append([name,dice_score_image])
+
+    return dice_list, iou_list, score_list
+
+def get_mean(score):
+    return score[1][len(score[1])-1]
+
+def get_pixel_predictions(images, predictions, params):
+
+    
+    pred_dict={}
+
+    if('mask_ce' not in images):
+        return None,None,None
+    filenames=images['filename']
+    images=images['mask_ce']
+    predictions=predictions['softmax']
+
+    
+    nr_classes=params.num_classes
+    
+
+    for (image, values, name) in zip(images, predictions,filenames):
+        pixel_list = np.zeros((params.num_classes,2))
+        if(params.remap==1):
+            pixel_list = np.zeros((4,2))
+            nr_classes=4
+        
+        for sem_class in range(nr_classes):
+
+            gtmask=np.array(image).flatten()
+            mask = np.array(torch.argmax(torch.from_numpy(values),dim=0)).flatten()
+
+            if(params.remap==1):
+                mask=mp(mask,replacements_dict)
+
+            pred_inds = (mask == sem_class)
+            target_inds = (gtmask == sem_class)
+
+            intersection_now = (pred_inds[target_inds]).sum()
+            union_now = pred_inds.sum().item() + target_inds.sum().item()
+            pixel_list[sem_class]=np.array([intersection_now,union_now])
+
+        pred_dict[name]=pixel_list
+
+    return pred_dict
 
 if __name__ == "__main__":
 
@@ -100,18 +338,7 @@ if __name__ == "__main__":
 
     # name the same snapshot defined in train script!
     args.exp = 'TU_' + dataset_name + str(args.img_size)
-    snapshot_path = "../model/{}/{}".format(args.exp, 'TU')
-    snapshot_path = snapshot_path + '_pretrain' if args.is_pretrain else snapshot_path
-    snapshot_path += '_' + args.vit_name
-    snapshot_path = snapshot_path + '_skip' + str(args.n_skip)
-    snapshot_path = snapshot_path + '_vitpatch' + str(args.vit_patches_size) if args.vit_patches_size!=16 else snapshot_path
-    snapshot_path = snapshot_path + '_epo' + str(args.max_epochs) if args.max_epochs != 30 else snapshot_path
-    if dataset_name == 'ACDC':  # using max_epoch instead of iteration to control training duration
-        snapshot_path = snapshot_path + '_' + str(args.max_iterations)[0:2] + 'k' if args.max_iterations != 30000 else snapshot_path
-    snapshot_path = snapshot_path+'_bs'+str(args.batch_size)
-    snapshot_path = snapshot_path + '_lr' + str(args.base_lr) if args.base_lr != 0.01 else snapshot_path
-    snapshot_path = snapshot_path + '_'+str(args.img_size)
-    snapshot_path = snapshot_path + '_s'+str(args.seed) if args.seed!=1234 else snapshot_path
+    
 
     config_vit = CONFIGS_ViT_seg[args.vit_name]
     config_vit.n_classes = args.num_classes
@@ -123,10 +350,13 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         net=net.cuda()
 
-    snapshot = os.path.join(snapshot_path, 'best_model.pth')
-    if not os.path.exists(snapshot): snapshot = snapshot.replace('best_model', 'epoch_'+str(args.max_epochs-1))
-    net.load_state_dict(torch.load(snapshot))
-    snapshot_name = snapshot_path.split('/')[-1]
+    snapshot=params.model_path
+    if(torch.cuda.is_available()):
+        net.load_state_dict(torch.load(snapshot))
+    else:
+        net.load_state_dict(torch.load(snapshot,map_location=torch.device("cpu")))
+
+    snapshot_name = snapshot.split('/')[-1]
 
     log_folder = './test_log/test_log_' + args.exp
     os.makedirs(log_folder, exist_ok=True)
@@ -141,6 +371,29 @@ if __name__ == "__main__":
         os.makedirs(test_save_path, exist_ok=True)
     else:
         test_save_path = None
-    inference(args, net, test_save_path)
+
+    images = sorted(Path(params.train_image_path).glob("*.png"))
+    masks = sorted(Path(params.train_mask_path).glob("*.png"))
+    train_path=params.train_id_path
+    test_path=params.test_id_path
+    train_images,train_masks=get_split(train_path,images,masks)
+    print("Generated trainingset...")
+    print("Generated validationset...")
+    test_images,test_masks=get_split(test_path,images,masks)
+
+    db_test = SegmentationDataset(
+      images = test_images,
+      masks = test_masks,
+      transforms = None,
+      num_classes = params.num_classes,
+      image_size=params.img_shape,
+      testmode=True
+    )
+    testloader = DataLoader(db_test, batch_size=1, shuffle=False, num_workers=1)
+    device = utils.get_device()
+    runner = SupervisedRunner(device=device, input_key="image", input_target_key="mask")
+    predict_and_visualize(testloader,net,runner,params,len(db_test),evalmode=True)
+
+
 
 

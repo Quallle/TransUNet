@@ -16,6 +16,7 @@ from utils import DiceLoss
 from torchvision import transforms
 from utils import Params
 from pathlib import Path
+import csv
 from datasets.augmentations import get_augmentations
 
 params=Params("./params.json")
@@ -32,11 +33,20 @@ def trainer_synapse(args, model, snapshot_path):
     # max_iterations = args.max_iterations
     images = sorted(Path(params.train_image_path).glob("*.png"))
     masks = sorted(Path(params.train_mask_path).glob("*.png"))
+    train_path=params.train_id_path
+    val_path=params.val_id_path
+    test_path=params.test_id_path
+    train_images,train_masks=get_split(train_path,images,masks)
+    print("Generated trainingset...")
+    val_images,val_masks = get_split(val_path,images,masks)
+    print("Generated validationset...")
+    test_images,test_masks=get_split(test_path,images,masks)
+
     transforms,_,_=get_augmentations(params)
-    db_train = SegmentationDataset(images,
+    db_train = SegmentationDataset(train_images,
         num_classes=params.num_classes,
         image_size=params.img_shape, #only squares right now 
-        masks=masks,
+        masks=train_masks,
         transforms=transforms,
         testmode=False,)
     print("The length of train set is: {}".format(len(db_train)))
@@ -107,3 +117,19 @@ def trainer_synapse(args, model, snapshot_path):
 
     writer.close()
     return "Training Finished!"
+
+def get_split(filepath,im_array,mask_array):
+    new_mask_arr=[]
+    new_im_arr=[]
+    with open(filepath) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            for im in im_array:
+                if(row[1] in str(im)):
+                    new_im_arr.append(im)
+                    break
+            for mask in mask_array:
+                if(row[1] in str(mask)):
+                    new_mask_arr.append(mask)
+                    break
+    return new_im_arr,new_mask_arr
