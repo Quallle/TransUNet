@@ -84,6 +84,7 @@ def trainer_synapse(args, model, snapshot_path):
     iterator = tqdm(range(max_epoch), ncols=70)
     for epoch_num in iterator:
         total_loss=0
+        best_val_loss=100
         for i_batch, sampled_batch in enumerate(trainloader):
             image_batch, label_batch = sampled_batch['image'], sampled_batch['mask_ce']
             if torch.cuda.is_available():
@@ -107,7 +108,7 @@ def trainer_synapse(args, model, snapshot_path):
             writer.add_scalar('info/total_loss', loss, iter_num)
             writer.add_scalar('info/loss_ce', loss_ce, iter_num)
 
-            print("\r {}".format("Iteration" +str(iter_num) + ", loss: " + str(loss.item())+ ", loss_ce: " +str(loss_ce.item())), end="")
+            print("\r {}".format("Iteration " +str(iter_num) + ", loss: " + str(loss.item())+ ", loss_ce: " +str(loss_ce.item())), end="")
             #logging.info('iteration %d : loss : %f, loss_ce: %f' % (iter_num, loss.item(), loss_ce.item()))
 
             if iter_num % 20 == 0:
@@ -119,9 +120,17 @@ def trainer_synapse(args, model, snapshot_path):
                 labs = label_batch[1, ...].unsqueeze(0) * 50
                 writer.add_image('train/GroundTruth', labs, iter_num)
 
-        print("trainloss: ", total_loss/len(db_train))
+        print("\n trainloss: ", total_loss/len(db_train))
         validation_loss= get_validation_loss(model,db_val,batch_size)
         print("validationloss: ", validation_loss)
+
+        if(validation_loss<best_val_loss):
+            best_val_loss=validation_loss
+            print("New best validation loss.")
+            save_mode_path = os.path.join(snapshot_path, 'best.pth')
+            torch.save(model.state_dict(), save_mode_path)
+            logging.info("save model to {}".format(save_mode_path))
+
         save_interval = int(max_epoch/6)
         if (epoch_num + 1) % save_interval == 0:
             save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
