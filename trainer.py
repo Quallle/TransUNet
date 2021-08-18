@@ -107,7 +107,7 @@ def trainer_synapse(args, model, snapshot_path):
             writer.add_scalar('info/total_loss', loss, iter_num)
             writer.add_scalar('info/loss_ce', loss_ce, iter_num)
 
-            print("\r {}".format("Iteration" +str(iter_num) + ", loss: " + str(loss.item())+ ", loss_ce: " +str(loss_ce.item()), end="")
+            print("\r {}".format("Iteration" +str(iter_num) + ", loss: " + str(loss.item())+ ", loss_ce: " +str(loss_ce.item())), end="")
             #logging.info('iteration %d : loss : %f, loss_ce: %f' % (iter_num, loss.item(), loss_ce.item()))
 
             if iter_num % 20 == 0:
