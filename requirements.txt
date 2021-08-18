@@ -16,3 +16,4 @@ catalyst==20.12
 albumentations==0.5.2
 ttach==0.0.2
 psutil
+scikit-learn==0.24.1

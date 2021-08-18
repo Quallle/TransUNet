@@ -93,7 +93,7 @@ def trainer_synapse(args, model, snapshot_path):
             loss_ce = ce_loss(outputs, label_batch[:].long())
             loss_dice = dice_loss(outputs, label_batch, softmax=True)
             loss = 0.5 * loss_ce + 0.5 * loss_dice
-            total_loss+=loss
+            total_loss+=loss.item()
 
             optimizer.zero_grad()
             loss.backward()
@@ -107,7 +107,8 @@ def trainer_synapse(args, model, snapshot_path):
             writer.add_scalar('info/total_loss', loss, iter_num)
             writer.add_scalar('info/loss_ce', loss_ce, iter_num)
 
-            logging.info('iteration %d : loss : %f, loss_ce: %f' % (iter_num, loss.item(), loss_ce.item()))
+            print("\r {}".format("Iteration" +iter_num + ", loss: " + loss.item()+ ", loss_ce: " +loss_ce.item()), end="")
+            #logging.info('iteration %d : loss : %f, loss_ce: %f' % (iter_num, loss.item(), loss_ce.item()))
 
             if iter_num % 20 == 0:
                 image = image_batch[1, 0:1, :, :]
@@ -119,7 +120,7 @@ def trainer_synapse(args, model, snapshot_path):
                 writer.add_image('train/GroundTruth', labs, iter_num)
 
         print("trainloss: ", total_loss/len(db_train))
-        validation_loss= get_validation_loss(model,db_val)
+        validation_loss= get_validation_loss(model,db_val,batch_size)
         print("validationloss: ", validation_loss)
         save_interval = int(max_epoch/6)
         if (epoch_num + 1) % save_interval == 0:
@@ -138,11 +139,10 @@ def trainer_synapse(args, model, snapshot_path):
     writer.close()
     return "Training Finished!"
 
-def get_validation_loss(net,db_val):
+def get_validation_loss(net,db_val,batch_size):
     ce_loss = CrossEntropyLoss()
     dice_loss = DiceLoss(params.num_classes)
-    testloader = DataLoader(db_val, batch_size=1, shuffle=False, num_workers=1)
-    device = utils.get_device()
+    testloader = DataLoader(db_val, batch_size=batch_size, shuffle=False, num_workers=1)
     total_loss=0
     with torch.no_grad():
         for i_batch, sampled_batch in enumerate(testloader):
@@ -154,7 +154,7 @@ def get_validation_loss(net,db_val):
             loss_ce = ce_loss(outputs, label_batch[:].long())
             loss_dice = dice_loss(outputs, label_batch, softmax=True)
             loss = 0.5 * loss_ce + 0.5 * loss_dice
-            total_loss+=loss
+            total_loss+=loss.item()
     return total_loss/len(db_val)
     
 def get_split(filepath,im_array,mask_array):
