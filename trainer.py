@@ -18,6 +18,12 @@ from utils import Params
 from pathlib import Path
 import csv
 from datasets.augmentations import get_augmentations
+import csv
+from sklearn.metrics import f1_score,jaccard_score
+from pathlib import Path
+from catalyst import utils
+from catalyst.dl import SupervisedRunner
+from datasets.dataset import SegmentationDataset
 
 params=Params("./params.json")
 
@@ -48,7 +54,14 @@ def trainer_synapse(args, model, snapshot_path):
         image_size=params.img_shape, #only squares right now 
         masks=train_masks,
         transforms=transforms,
-        testmode=False,)
+        testmode=False)
+    db_val = SegmentationDataset(val_images,
+        num_classes=params.num_classes,
+        image_size=params.img_shape, #only squares right now 
+        masks=val_masks,
+        transforms=transforms,
+        testmode=False)
+
     print("The length of train set is: {}".format(len(db_train)))
 
     def worker_init_fn(worker_id):
@@ -70,6 +83,7 @@ def trainer_synapse(args, model, snapshot_path):
     best_performance = 0.0
     iterator = tqdm(range(max_epoch), ncols=70)
     for epoch_num in iterator:
+        total_loss=0
         for i_batch, sampled_batch in enumerate(trainloader):
             image_batch, label_batch = sampled_batch['image'], sampled_batch['mask_ce']
             if torch.cuda.is_available():
@@ -79,6 +93,8 @@ def trainer_synapse(args, model, snapshot_path):
             loss_ce = ce_loss(outputs, label_batch[:].long())
             loss_dice = dice_loss(outputs, label_batch, softmax=True)
             loss = 0.5 * loss_ce + 0.5 * loss_dice
+            total_loss+=loss
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -102,6 +118,9 @@ def trainer_synapse(args, model, snapshot_path):
                 labs = label_batch[1, ...].unsqueeze(0) * 50
                 writer.add_image('train/GroundTruth', labs, iter_num)
 
+        print("trainloss: ", total_loss/len(db_train))
+        validation_loss= get_validation_loss(model,db_val)
+        print("validationloss: ", validation_loss)
         save_interval = int(max_epoch/6)
         if (epoch_num + 1) % save_interval == 0:
             save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
@@ -114,10 +133,30 @@ def trainer_synapse(args, model, snapshot_path):
             logging.info("save model to {}".format(save_mode_path))
             iterator.close()
             break
+        #here:validation
 
     writer.close()
     return "Training Finished!"
 
+def get_validation_loss(net,db_val):
+    ce_loss = CrossEntropyLoss()
+    dice_loss = DiceLoss(params.num_classes)
+    testloader = DataLoader(db_val, batch_size=1, shuffle=False, num_workers=1)
+    device = utils.get_device()
+    total_loss=0
+    with torch.no_grad():
+        for i_batch, sampled_batch in enumerate(testloader):
+            image_batch, label_batch = sampled_batch['image'], sampled_batch['mask_ce']
+            if torch.cuda.is_available():
+                image_batch, label_batch = image_batch.cuda(), label_batch.cuda()
+
+            outputs = net(image_batch)
+            loss_ce = ce_loss(outputs, label_batch[:].long())
+            loss_dice = dice_loss(outputs, label_batch, softmax=True)
+            loss = 0.5 * loss_ce + 0.5 * loss_dice
+            total_loss+=loss
+    return total_loss/len(db_val)
+    
 def get_split(filepath,im_array,mask_array):
     new_mask_arr=[]
     new_im_arr=[]

@@ -2,3 +2,5 @@ __pycache__
 R50*
 launch.json
 epoch*
+imagenet*
+ViT-*
