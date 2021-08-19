@@ -49,7 +49,7 @@ def get_r50_b16_config():
 
     config.classifier = 'seg'
     config.pretrained_path = 'model/vit_checkpoint/imagenet21k/R50+ViT-B_16.npz'
-    config.decoder_channels = (512, 256, 128, 64)
+    config.decoder_channels = (1024, 512, 256, 64)
     config.skip_channels = [512, 256, 128, 64]
     config.n_classes = 2
     config.n_skip = 4
