@@ -112,14 +112,14 @@ def trainer_synapse(args, model, snapshot_path):
             print("\r {}".format("Iteration " +str(iter_num) + ", loss: " + str(loss.item())+ ", loss_ce: " +str(loss_ce.item())), end="")
             #logging.info('iteration %d : loss : %f, loss_ce: %f' % (iter_num, loss.item(), loss_ce.item()))
 
-            if iter_num % 20 == 0:
-                image = image_batch[1, 0:1, :, :]
-                image = (image - image.min()) / (image.max() - image.min())
-                writer.add_image('train/Image', image, iter_num)
-                outputs = torch.argmax(torch.softmax(outputs, dim=1), dim=1, keepdim=True)
-                writer.add_image('train/Prediction', outputs[1, ...] * 50, iter_num)
-                labs = label_batch[1, ...].unsqueeze(0) * 50
-                writer.add_image('train/GroundTruth', labs, iter_num)
+            # if iter_num % 20 == 0:
+            #     image = image_batch[1, 0:1, :, :]
+            #     image = (image - image.min()) / (image.max() - image.min())
+            #     writer.add_image('train/Image', image, iter_num)
+            #     outputs = torch.argmax(torch.softmax(outputs, dim=1), dim=1, keepdim=True)
+            #     writer.add_image('train/Prediction', outputs[1, ...] * 50, iter_num)
+            #     labs = label_batch[1, ...].unsqueeze(0) * 50
+            #     writer.add_image('train/GroundTruth', labs, iter_num)
 
         print("\n trainloss: ", total_loss/len(db_train))
         validation_loss= get_validation_loss(model,db_val,batch_size)
