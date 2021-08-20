@@ -62,7 +62,7 @@ def trainer_synapse(args, model, snapshot_path):
         masks=val_masks,
         transforms=transforms,
         testmode=False)
-
+    print("nr found rtrain imags:" , len(train_images))
     print("The length of train set is: {}".format(len(db_train)))
 
     def worker_init_fn(worker_id):
