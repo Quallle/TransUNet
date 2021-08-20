@@ -377,6 +377,7 @@ if __name__ == "__main__":
     train_path=params.train_id_path
     test_path=params.test_id_path
     train_images,train_masks=get_split(train_path,images,masks)
+    print("nr found rtrain imags:" , len(train_images))
     print("Generated trainingset...")
     print("Generated validationset...")
     test_images,test_masks=get_split(test_path,images,masks)
