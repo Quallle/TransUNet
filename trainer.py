@@ -39,6 +39,7 @@ def trainer_synapse(args, model, snapshot_path):
     batch_size = args.batch_size * args.n_gpu
     # max_iterations = args.max_iterations
     images = sorted(Path(params.train_image_path).glob("*.png"))
+    print("nr images", len(images))
     masks = sorted(Path(params.train_mask_path).glob("*.png"))
     train_path=params.train_id_path
     val_path=params.val_id_path
@@ -209,13 +210,16 @@ def get_split(filepath,im_array,mask_array):
     new_im_arr=[]
     with open(filepath) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=',')
-        for row in csv_reader:
+        for i,row in enumerate(csv_reader):
+            print(i)
             for im in im_array:
                 if(row[1] in str(im)):
                     new_im_arr.append(im)
+                    print("found image")
                     break
             for mask in mask_array:
                 if(row[1] in str(mask)):
                     new_mask_arr.append(mask)
+                    print("found image")
                     break
     return new_im_arr,new_mask_arr
