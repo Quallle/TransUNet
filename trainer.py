@@ -202,7 +202,7 @@ def get_validation_loss(net,db_val,batch_size):
             total_loss_dice+=0.5*loss_dice.item()
             total_loss_ce+=0.5*loss_ce.item()
 
-    return total_loss_dice.item()/len(db_val),total_loss_ce.item()/len(db_val)
+    return total_loss_dice/len(db_val),total_loss_ce/len(db_val)
     
 def get_split(filepath,im_array,mask_array):
     new_mask_arr=[]
