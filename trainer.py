@@ -63,7 +63,7 @@ def trainer_synapse(args, model, snapshot_path):
         masks=val_masks,
         transforms=transforms,
         testmode=False)
-    print("nr found rtrain imags:" , len(train_images))
+
     print("The length of train set is: {}".format(len(db_train)))
 
     def worker_init_fn(worker_id):
@@ -210,16 +210,13 @@ def get_split(filepath,im_array,mask_array):
     new_im_arr=[]
     with open(filepath) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=',')
-        for i,row in enumerate(csv_reader):
-            print(i)
+        for row in csv_reader:
             for im in im_array:
                 if(row[1] in str(im)):
                     new_im_arr.append(im)
-                    print("found image")
                     break
             for mask in mask_array:
                 if(row[1] in str(mask)):
                     new_mask_arr.append(mask)
-                    print("found image")
                     break
     return new_im_arr,new_mask_arr
