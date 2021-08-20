@@ -24,6 +24,7 @@ from pathlib import Path
 from catalyst import utils
 from catalyst.dl import SupervisedRunner
 from datasets.dataset import SegmentationDataset
+import matplotlib.pyplot as plt
 
 params=Params("./params.json")
 
@@ -83,6 +84,8 @@ def trainer_synapse(args, model, snapshot_path):
     best_performance = 0.0
     iterator = tqdm(range(max_epoch), ncols=70)
     best_val_loss=100
+    all_train_loss=[]
+    all_val_loss=[]
     for epoch_num in iterator:
         total_loss=0
         
@@ -120,9 +123,14 @@ def trainer_synapse(args, model, snapshot_path):
             #     writer.add_image('train/Prediction', outputs[1, ...] * 50, iter_num)
             #     labs = label_batch[1, ...].unsqueeze(0) * 50
             #     writer.add_image('train/GroundTruth', labs, iter_num)
-
-        print("\n trainloss: ", total_loss/len(db_train))
         validation_loss= get_validation_loss(model,db_val,batch_size)
+        train_loss=total_loss/len(db_train)
+        
+        all_train_loss.append(train_loss)
+        all_val_loss.append(validation_loss)
+        plot_loss(all_train_loss,all_val_loss)
+        print("\n trainloss: ", train_loss)
+        
         print("validationloss: ", validation_loss)
 
         if(validation_loss<best_val_loss):
@@ -148,6 +156,15 @@ def trainer_synapse(args, model, snapshot_path):
 
     writer.close()
     return "Training Finished!"
+
+def plot_loss(train_loss,val_loss):
+    plt.plot(train_loss,label="training loss")
+    plt.plot(val_loss, label="validation loss")
+    plt.legend()
+    plt.xticks(range(len(train_loss)))
+    plt.xlabel("epoch")
+    plt.ylabel("loss")
+    plt.savefig("lossplot.png")
 
 def get_validation_loss(net,db_val,batch_size):
     ce_loss = CrossEntropyLoss()

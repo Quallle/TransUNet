@@ -4,3 +4,4 @@ launch.json
 epoch*
 imagenet*
 ViT-*
+*.png
