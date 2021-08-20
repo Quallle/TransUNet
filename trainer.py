@@ -84,10 +84,14 @@ def trainer_synapse(args, model, snapshot_path):
     best_performance = 0.0
     iterator = tqdm(range(max_epoch), ncols=70)
     best_val_loss=100
-    all_train_loss=[]
-    all_val_loss=[]
+    train_dice_losses=[]
+    train_ce_losses=[]
+    val_dice_losses=[]
+    val_ce_losses=[]
+
     for epoch_num in iterator:
-        total_loss=0
+        train_dice_loss_epoch=0
+        train_ce_loss_epoch=0
         
         for i_batch, sampled_batch in enumerate(trainloader):
             image_batch, label_batch = sampled_batch['image'], sampled_batch['mask_ce']
@@ -98,7 +102,9 @@ def trainer_synapse(args, model, snapshot_path):
             loss_ce = ce_loss(outputs, label_batch[:].long())
             loss_dice = dice_loss(outputs, label_batch, softmax=True)
             loss = 0.5 * loss_ce + 0.5 * loss_dice
-            total_loss+=loss.item()
+
+            train_dice_loss_epoch+=0.5*loss_dice.item()
+            train_ce_loss_epoch+=0.5*loss_ce.item()
 
             optimizer.zero_grad()
             loss.backward()
@@ -123,18 +129,27 @@ def trainer_synapse(args, model, snapshot_path):
             #     writer.add_image('train/Prediction', outputs[1, ...] * 50, iter_num)
             #     labs = label_batch[1, ...].unsqueeze(0) * 50
             #     writer.add_image('train/GroundTruth', labs, iter_num)
-        validation_loss= get_validation_loss(model,db_val,batch_size)
-        train_loss=total_loss/len(db_train)
-        
-        all_train_loss.append(train_loss)
-        all_val_loss.append(validation_loss)
-        plot_loss(all_train_loss,all_val_loss)
-        print("\n trainloss: ", train_loss)
-        
-        print("validationloss: ", validation_loss)
+        train_ce_loss_epoch=train_ce_loss_epoch/len(db_train)
+        train_dice_loss_epoch=train_dice_loss_epoch/len(db_train)
 
-        if(validation_loss<best_val_loss):
-            best_val_loss=validation_loss
+        train_dice_losses.append(train_dice_loss_epoch)
+        train_ce_losses.append(train_ce_loss_epoch)
+        total_loss=train_dice_loss_epoch+train_ce_loss_epoch
+
+        val_dice_loss_epoch, val_ce_loss_epoch= get_validation_loss(model,db_val,batch_size)
+        total_val_loss=val_dice_loss_epoch+ val_ce_loss_epoch
+        val_dice_losses.append(val_dice_loss_epoch)
+        val_ce_losses.append(val_ce_loss_epoch)
+
+        plot_loss(train_dice_losses,val_dice_losses,"Dice Loss")
+        plot_loss(train_ce_losses,val_ce_losses,"Cross Entropy Loss")
+        plot_loss(np.array(train_dice_losses)+np.array(train_ce_losses),np.array(val_dice_losses)+np.array(val_ce_losses),"Total Loss")
+
+        print("\n trainloss: ", total_loss)
+        print("validationloss: ", total_val_loss)
+
+        if(total_val_loss<best_val_loss):
+            best_val_loss=total_val_loss
             print("New best validation loss.")
             save_mode_path = os.path.join(snapshot_path, 'best.pth')
             torch.save(model.state_dict(), save_mode_path)
@@ -157,21 +172,23 @@ def trainer_synapse(args, model, snapshot_path):
     writer.close()
     return "Training Finished!"
 
-def plot_loss(train_loss,val_loss):
+def plot_loss(train_loss,val_loss, name):
     plt.plot(train_loss,label="training loss")
     plt.plot(val_loss, label="validation loss")
     plt.legend()
-    plt.xticks(range(len(train_loss)))
+    plt.xticks(range(0,len(train_loss),5))
     plt.xlabel("epoch")
     plt.ylabel("loss")
-    plt.savefig("lossplot.png")
+    plt.title(name)
+    plt.savefig(name+"_plot.png")
     plt.close()
 
 def get_validation_loss(net,db_val,batch_size):
     ce_loss = CrossEntropyLoss()
     dice_loss = DiceLoss(params.num_classes)
     testloader = DataLoader(db_val, batch_size=batch_size, shuffle=False, num_workers=1)
-    total_loss=0
+    total_loss_dice=0
+    total_loss_ce=0
     with torch.no_grad():
         for i_batch, sampled_batch in enumerate(testloader):
             image_batch, label_batch = sampled_batch['image'], sampled_batch['mask_ce']
@@ -182,8 +199,10 @@ def get_validation_loss(net,db_val,batch_size):
             loss_ce = ce_loss(outputs, label_batch[:].long())
             loss_dice = dice_loss(outputs, label_batch, softmax=True)
             loss = 0.5 * loss_ce + 0.5 * loss_dice
-            total_loss+=loss.item()
-    return total_loss/len(db_val)
+            total_loss_dice+=0.5*loss_dice.item()
+            total_loss_ce+=0.5*loss_ce.item()
+
+    return total_loss_dice.item()/len(db_val),total_loss_ce.item()/len(db_val)
     
 def get_split(filepath,im_array,mask_array):
     new_mask_arr=[]
