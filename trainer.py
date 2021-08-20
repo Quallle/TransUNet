@@ -165,6 +165,7 @@ def plot_loss(train_loss,val_loss):
     plt.xlabel("epoch")
     plt.ylabel("loss")
     plt.savefig("lossplot.png")
+    plt.close()
 
 def get_validation_loss(net,db_val,batch_size):
     ce_loss = CrossEntropyLoss()
