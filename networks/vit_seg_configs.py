@@ -9,8 +9,8 @@ def get_b16_config():
     config.transformer.mlp_dim = 3072
     config.transformer.num_heads = 12
     config.transformer.num_layers = 12
-    config.transformer.attention_dropout_rate = 0.1
-    config.transformer.dropout_rate = 0.2
+    config.transformer.attention_dropout_rate = 0
+    config.transformer.dropout_rate = 0.1
 
     config.classifier = 'seg'
     config.representation_size = None
@@ -18,7 +18,7 @@ def get_b16_config():
     config.pretrained_path = 'model/vit_checkpoint/imagenet21k/ViT-B_16.npz'
     config.patch_size = 16
 
-    config.decoder_channels = (256, 128, 64, 16)
+    config.decoder_channels = (512, 256, 128, 32)
     config.n_classes = 2
     config.activation = 'softmax'
     return config
