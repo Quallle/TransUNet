@@ -1,9 +1,7 @@
-import argparse
 import logging
 import os
 import random
 import sys
-import time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,17 +11,12 @@ from torch.nn.modules.loss import CrossEntropyLoss
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from utils import DiceLoss
-from torchvision import transforms
 from utils import Params
 from pathlib import Path
 import csv
 from datasets.augmentations import get_augmentations
 import csv
-from sklearn.metrics import f1_score,jaccard_score
 from pathlib import Path
-from catalyst import utils
-from catalyst.dl import SupervisedRunner
-from datasets.dataset import SegmentationDataset
 import matplotlib.pyplot as plt
 
 params=Params("./params.json")
@@ -39,16 +32,15 @@ def trainer_synapse(args, model, snapshot_path):
     batch_size = args.batch_size * args.n_gpu
     # max_iterations = args.max_iterations
     images = sorted(Path(params.train_image_path).glob("*.png"))
-    print("nr images", len(images))
     masks = sorted(Path(params.train_mask_path).glob("*.png"))
+
     train_path=params.train_id_path
     val_path=params.val_id_path
-    test_path=params.test_id_path
+
     train_images,train_masks=get_split(train_path,images,masks)
     print("Generated trainingset...")
     val_images,val_masks = get_split(val_path,images,masks)
     print("Generated validationset...")
-    test_images,test_masks=get_split(test_path,images,masks)
 
     transforms,_,_=get_augmentations(params)
     db_train = SegmentationDataset(train_images,
@@ -76,13 +68,12 @@ def trainer_synapse(args, model, snapshot_path):
     model.train()
     ce_loss = CrossEntropyLoss()
     dice_loss = DiceLoss(num_classes)
-    optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
+    optimizer = optim.AdamW(model.parameters(), lr=base_lr)
     writer = SummaryWriter(snapshot_path + '/log')
     iter_num = 0
     max_epoch = args.max_epochs
     max_iterations = args.max_epochs * len(trainloader)  # max_epoch = max_iterations // len(trainloader) + 1
     logging.info("{} iterations per epoch. {} max iterations ".format(len(trainloader), max_iterations))
-    best_performance = 0.0
     iterator = tqdm(range(max_epoch), ncols=70)
     best_val_loss=100
     train_dice_losses=[]
