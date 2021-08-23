@@ -168,7 +168,8 @@ def trainer_synapse(args, model, snapshot_path):
             logging.info("save model to {}".format(save_mode_path))
             iterator.close()
             break
-        #here:validation
+        save_mode_path = os.path.join(snapshot_path, 'last.pth')
+        torch.save(model.state_dict(), save_mode_path)
 
     writer.close()
     return "Training Finished!"
